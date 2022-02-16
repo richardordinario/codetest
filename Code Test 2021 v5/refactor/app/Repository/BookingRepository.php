@@ -91,33 +91,42 @@ class BookingRepository extends BaseRepository
      */
     public function getUsersJobsHistory($user_id, Request $request)
     {
+        $pagenum = "1";
         $page = $request->get('page');
-        if (isset($page)) {
-            $pagenum = $page;
-        } else {
-            $pagenum = "1";
-        }
+        if (isset($page)) $pagenum = $page;
+        
         $cuser = User::find($user_id);
-        $usertype = '';
+        $usertype = 'customer';
         $emergencyJobs = array();
         $noramlJobs = array();
+        $jobs= [];
+        $numpages=0;
+        $pagenum=0;
         if ($cuser && $cuser->is('customer')) {
             $jobs = $cuser->jobs()->with('user.userMeta', 'user.average', 'translatorJobRel.user.average', 'language', 'feedback', 'distance')->whereIn('status', ['completed', 'withdrawbefore24', 'withdrawafter24', 'timedout'])->orderBy('due', 'desc')->paginate(15);
-            $usertype = 'customer';
-            return ['emergencyJobs' => $emergencyJobs, 'noramlJobs' => [], 'jobs' => $jobs, 'cuser' => $cuser, 'usertype' => $usertype, 'numpages' => 0, 'pagenum' => 0];
-        } elseif ($cuser && $cuser->is('translator')) {
+            // $usertype = 'customer';
+            // return ['emergencyJobs' => $emergencyJobs, 'noramlJobs' => [], 'jobs' => $jobs, 'cuser' => $cuser, 'usertype' => $usertype, 'numpages' => 0, 'pagenum' => 0];
+        } 
+        
+        if ($cuser && $cuser->is('translator')) {
             $jobs_ids = Job::getTranslatorJobsHistoric($cuser->id, 'historic', $pagenum);
             $totaljobs = $jobs_ids->total();
             $numpages = ceil($totaljobs / 15);
-
             $usertype = 'translator';
-
             $jobs = $jobs_ids;
             $noramlJobs = $jobs_ids;
-//            $jobs['data'] = $noramlJobs;
-//            $jobs['total'] = $totaljobs;
-            return ['emergencyJobs' => $emergencyJobs, 'noramlJobs' => $noramlJobs, 'jobs' => $jobs, 'cuser' => $cuser, 'usertype' => $usertype, 'numpages' => $numpages, 'pagenum' => $pagenum];
+            // return ['emergencyJobs' => $emergencyJobs, 'noramlJobs' => $noramlJobs, 'jobs' => $jobs, 'cuser' => $cuser, 'usertype' => $usertype, 'numpages' => $numpages, 'pagenum' => $pagenum];
         }
+
+        return [
+            'emergencyJobs' => $emergencyJobs, 
+            'noramlJobs' => $noramlJobs, 
+            'jobs' => $jobs, 
+            'cuser' => $cuser, 
+            'usertype' => $usertype, 
+            'numpages' => $numpages, 
+            'pagenum' => $pagenum
+        ];
     }
 
     /**
@@ -209,33 +218,13 @@ class BookingRepository extends BaseRepository
             } else if (in_array('female', $data['job_for'])) {
                 $data['gender'] = 'female';
             }
-            if (in_array('normal', $data['job_for'])) {
-                $data['certified'] = 'normal';
-            }
-            else if (in_array('certified', $data['job_for'])) {
-                $data['certified'] = 'yes';
-            } else if (in_array('certified_in_law', $data['job_for'])) {
-                $data['certified'] = 'law';
-            } else if (in_array('certified_in_helth', $data['job_for'])) {
-                $data['certified'] = 'health';
-            }
-            if (in_array('normal', $data['job_for']) && in_array('certified', $data['job_for'])) {
-                $data['certified'] = 'both';
-            }
-            else if(in_array('normal', $data['job_for']) && in_array('certified_in_law', $data['job_for']))
-            {
-                $data['certified'] = 'n_law';
-            }
-            else if(in_array('normal', $data['job_for']) && in_array('certified_in_helth', $data['job_for']))
-            {
-                $data['certified'] = 'n_health';
-            }
-            if ($consumer_type == 'rwsconsumer')
-                $data['job_type'] = 'rws';
-            else if ($consumer_type == 'ngo')
-                $data['job_type'] = 'unpaid';
-            else if ($consumer_type == 'paid')
-                $data['job_type'] = 'paid';
+
+            $data['certified'] = $this->checkCertified($data);
+
+            if ($consumer_type == 'rwsconsumer')    $data['job_type'] = 'rws';
+            if ($consumer_type == 'ngo')            $data['job_type'] = 'unpaid';
+            if ($consumer_type == 'paid')           $data['job_type'] = 'paid';
+
             $data['b_created_at'] = date('Y-m-d H:i:s');
             if (isset($due))
                 $data['will_expire_at'] = TeHelper::willExpireAt($due, $data['b_created_at']);
@@ -276,7 +265,21 @@ class BookingRepository extends BaseRepository
         }
 
         return $response;
+    }
 
+    // we can also separate this in another class
+    public function checkCertified($data) {
+        $cert = '';
+
+        if (in_array('normal', $data['job_for'])) $cert = 'normal';
+        if (in_array('certified', $data['job_for'])) $cert = 'yes';
+        if (in_array('certified_in_law', $data['job_for'])) $cert = 'law';
+        if (in_array('certified_in_helth', $data['job_for'])) $cert = 'health';
+        if (in_array('normal', $data['job_for']) && in_array('certified', $data['job_for'])) $cert = 'both';
+        if (in_array('normal', $data['job_for']) && in_array('certified_in_law', $data['job_for'])) $cert = 'n_law';
+        if(in_array('normal', $data['job_for']) && in_array('certified_in_helth', $data['job_for'])) $cert = 'n_health';
+        
+        return $cert;
     }
 
     /**
